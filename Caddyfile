@@ -1,0 +1,9 @@
+your-domain.ru {
+    reverse_proxy backend:8000
+
+    @websockets {
+        header Connection *Upgrade*
+        header Upgrade websocket
+    }
+    reverse_proxy @websockets backend:8000
+}

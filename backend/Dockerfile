@@ -1,30 +1,30 @@
-# Используем официальный образ uv, в который уже встроен Python и сам uv
-FROM ghcr.io/astral-sh/uv:0.6-python3.11-alpine AS builder
+FROM ghcr.io/astral-sh/uv:0.6-python3.14-alpine AS builder
 
-# Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Включаем оптимизацию: uv будет компилировать байт-код (.pyc) сразу при установке,
-# что ускорит первый запуск контейнера.
-ENV UV_COMPILE_BYTECODE=1
+ENV UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 
-# Отключаем создание виртуального окружения (venv) внутри контейнера.
-# Поскольку контейнер изолирован сам по себе, мы ставим пакеты прямо в систему.
-ENV UV_LINK_MODE=copy
+COPY pyproject.toml uv.lock ./
 
-# Копируем конфигурационный файл проекта для установки зависимостей
-COPY pyproject.toml ./
-
-# Шаг сборки: монтируем кэш uv, чтобы при повторных сборках не скачивать пакеты заново,
-# и устанавливаем только зависимости проекта (без самого кода)
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv pip install --system -r pyproject.toml
+    uv sync --frozen --no-dev --no-install-project
 
-# Копируем исходный код приложения
 COPY src/ ./src/
 
-# Открываем порт для FastAPI
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev
+
+
+FROM python:3.14-alpine AS runtime
+
+WORKDIR /app
+
+COPY --from=builder /app/.venv /app/.venv
+COPY --from=builder /app/src /app/src
+
+ENV PATH="/app/.venv/bin:$PATH"
+
 EXPOSE 8000
 
-# Запускаем сервер uvicorn напрямую через установленные системные пакеты
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]

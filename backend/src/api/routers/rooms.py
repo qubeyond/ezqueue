@@ -1,0 +1,48 @@
+from typing import Annotated
+
+from dishka import FromDishka
+from dishka.integrations.fastapi import inject
+from fastapi import APIRouter, Depends, Query, Request
+
+from src.api.deps import get_current_user, require_admin
+from src.api.limiter import limiter
+from src.api.schemas.rooms import RoomCloseResponse, RoomCreateResponse, RoomStateResponse
+from src.services.room import RoomService
+
+router = APIRouter(prefix="/rooms", tags=["rooms"])
+
+
+@router.post("", response_model=RoomCreateResponse)
+@limiter.limit("10/minute")
+@inject
+async def create_room(
+    request: Request,
+    user: Annotated[dict, Depends(get_current_user)],
+    room_service: FromDishka[RoomService],
+):
+    result = await room_service.create_room(user["sub"])
+    return RoomCreateResponse(room_id=result.room_id, access_token=result.access_token)
+
+
+@router.delete("/{room_id}", response_model=RoomCloseResponse)
+@limiter.limit("10/minute")
+@inject
+async def close_room(
+    request: Request,
+    room_id: str,
+    user: Annotated[dict, Depends(require_admin)],
+    room_service: FromDishka[RoomService],
+):
+    result = await room_service.close_room(room_id.upper(), user["sub"])
+    return RoomCloseResponse(status=result.status)
+
+
+@router.get("/{room_id}/state", response_model=RoomStateResponse)
+@inject
+async def room_state(
+    room_id: str,
+    user: Annotated[dict, Depends(get_current_user)],
+    room_service: FromDishka[RoomService],
+    user_id: Annotated[str, Query()] = "",
+):
+    return await room_service.get_state(room_id.upper(), user_id or user["sub"])
