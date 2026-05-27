@@ -6,7 +6,7 @@ from typing import Annotated
 from dishka.integrations.fastapi import setup_dishka
 from fastapi import FastAPI, Query, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import JSONResponse
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from sqlalchemy.ext.asyncio import AsyncEngine
@@ -15,7 +15,6 @@ from src.api.limiter import limiter
 from src.api.routers import admin, auth, queue, rooms
 from src.config import Settings
 from src.domain.repositories import QueueRepo, WebSocketBroadcaster
-from src.html_provider import get_spa_html
 from src.infrastructure.db.base import init_db
 from src.infrastructure.ioc import create_container
 from src.services.auth import AuthService
@@ -39,22 +38,28 @@ def _rate_limit_handler(request: Request, exc: RateLimitExceeded) -> JSONRespons
 async def lifespan(app: FastAPI):
     engine = await container.get(AsyncEngine)
     await init_db(engine)
-    settings: Settings = await container.get(Settings)
-    app.state.cors_origins = settings.cors_origins
     yield
     await container.close()
 
 
-app = FastAPI(title="Queue Service", version="1.0.0", lifespan=lifespan)
+_settings = Settings()
+
+app = FastAPI(
+    title="Queue Service",
+    version="1.0.0",
+    lifespan=lifespan,
+    docs_url="/docs" if _settings.debug else None,
+    redoc_url="/redoc" if _settings.debug else None,
+    openapi_url="/openapi.json" if _settings.debug else None,
+)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_handler)
 app.add_middleware(SlowAPIMiddleware)
 setup_dishka(container, app)
 
-# CORS origins configured via CORS_ORIGINS env var (comma-separated in .env)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # overridden at runtime via settings — set CORS_ORIGINS in .env
+    allow_origins=_settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -76,9 +81,9 @@ app.include_router(queue.router, prefix="/api/v1")
 app.include_router(admin.router, prefix="/api/v1")
 
 
-@app.get("/", response_class=HTMLResponse)
-async def spa():
-    return get_spa_html()
+@app.get("/")
+async def healthcheck():
+    return {"status": "ok"}
 
 
 @app.websocket("/ws/room/{room_id}")

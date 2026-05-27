@@ -2,6 +2,14 @@ services:
   backend:
     ports: []
 
+  frontend:
+    build:
+      target: builder
+    ports: []
+    volumes:
+      - frontend_dist:/app/dist
+    command: ["sh", "-c", "echo done"]
+
   caddy:
     image: caddy:2-alpine
     container_name: queue_caddy
@@ -9,13 +17,20 @@ services:
     ports:
       - "80:80"
       - "443:443"
+    env_file:
+      - .env
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - frontend_dist:/srv:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
-      - backend
+      frontend:
+        condition: service_completed_successfully
+      backend:
+        condition: service_started
 
 volumes:
   caddy_data:
   caddy_config:
+  frontend_dist:

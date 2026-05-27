@@ -3,10 +3,8 @@ services:
     image: postgres:16-alpine
     container_name: queue_postgres
     restart: always
-    environment:
-      POSTGRES_USER: queue
-      POSTGRES_PASSWORD: queue
-      POSTGRES_DB: queue
+    env_file:
+      - .env
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -25,14 +23,27 @@ services:
     container_name: queue_backend
     restart: always
     ports:
-      - "8000:8000"
-    environment:
-      - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql+asyncpg://queue:queue@postgres:5432/queue
-      - JWT_SECRET=${JWT_SECRET:-dev-secret-change-in-prod}
+      - "${BACKEND_PORT}:8000"
+    env_file:
+      - .env
+      - ./backend/.env
     depends_on:
       - redis
       - postgres
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: queue_frontend
+    restart: always
+    ports:
+      - "${FRONTEND_PORT}:5173"
+    env_file:
+      - .env
+    depends_on:
+      - backend
 
 volumes:
   postgres_data:

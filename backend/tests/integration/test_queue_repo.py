@@ -1,9 +1,3 @@
-"""
-Integration tests for RedisQueueRepo.
-Require a running Redis instance at redis://localhost:6379/1.
-Run with: pytest tests/integration -m integration
-"""
-
 import pytest
 
 pytestmark = pytest.mark.integration

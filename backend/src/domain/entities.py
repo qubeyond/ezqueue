@@ -25,9 +25,6 @@ class TicketEventEntity:
         return None
 
 
-# ── Service result DTOs ────────────────────────────────────────────────────────
-
-
 @dataclass
 class RoomCreated:
     room_id: str

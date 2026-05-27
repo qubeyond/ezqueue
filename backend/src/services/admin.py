@@ -60,11 +60,16 @@ class AdminService:
         return QueueAdded(queue_label=label)
 
     async def remove_queue(self, room_id: str, label: str) -> QueueRemoved:
-        ok = await self._qr.remove_queue(room_id, label)
+        try:
+            ok = await self._qr.remove_queue(room_id, label)
+        except ValueError as e:
+            if str(e) == "last_queue":
+                raise HTTPException(
+                    status_code=400, detail="Нельзя удалить единственную очередь"
+                ) from None
+            raise
         if not ok:
-            raise HTTPException(
-                status_code=400, detail="Нельзя удалить: очередь не найдена или единственная"
-            )
+            raise HTTPException(status_code=404, detail="Очередь не найдена")
         await self._bc.broadcast(room_id, {"type": "update"})
         return QueueRemoved(queue_label=label)
 

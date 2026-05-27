@@ -1,17 +1,3 @@
-"""
-Integration tests for the rebalance+stats bug:
-when a user is redistributed from queue A to queue B via add_queue,
-their ticket's queue_label in Redis changes to "B", but the TicketEvent
-row in the DB still has queue_label="A".
-
-mark_called / mark_completed previously filtered by queue_label, so the
-UPDATE matched 0 rows — the ticket was never recorded as called/completed
-in the stats.
-
-These tests use a real Redis (DB #1) and an in-memory SQLite DB.
-Run with: pytest tests/integration -m integration
-"""
-
 import pytest
 import pytest_asyncio
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -40,14 +26,7 @@ async def ticket_repo(db_session: AsyncSession):
     return SQLAlchemyTicketRepo(db_session)
 
 
-# ── Reproduce the bug ──────────────────────────────────────────────────────────
-
-
 async def test_mark_called_after_rebalance_updates_db(repo: RedisQueueRepo, ticket_repo):
-    """
-    Ticket issued in queue A, user redistributed to B via add_queue.
-    mark_called with label="B" must still update the DB row (which has label="A").
-    """
     await repo.init_queue(ROOM, "A")
     await repo.take_ticket(ROOM, "A", "user1")
     await repo.take_ticket(ROOM, "A", "user2")
@@ -78,10 +57,6 @@ async def test_mark_called_after_rebalance_updates_db(repo: RedisQueueRepo, tick
 
 
 async def test_mark_completed_after_rebalance_updates_db(repo: RedisQueueRepo, ticket_repo):
-    """
-    Full cycle: issue → rebalance → call_next → complete_serving.
-    Both called_at and completed_at must be set for the redistributed ticket.
-    """
     await repo.init_queue(ROOM, "A")
     await repo.take_ticket(ROOM, "A", "user1")
     await repo.take_ticket(ROOM, "A", "user2")
@@ -111,9 +86,6 @@ async def test_mark_completed_after_rebalance_updates_db(repo: RedisQueueRepo, t
 
 
 async def test_stats_counts_rebalanced_ticket_as_completed(repo: RedisQueueRepo, ticket_repo):
-    """
-    get_stats (via get_events) must count the redistributed ticket in 'completed'.
-    """
     await repo.init_queue(ROOM, "A")
     for i in range(1, 5):
         await repo.take_ticket(ROOM, "A", f"user{i}")
@@ -135,9 +107,6 @@ async def test_stats_counts_rebalanced_ticket_as_completed(repo: RedisQueueRepo,
 
 
 async def test_non_rebalanced_ticket_unaffected(repo: RedisQueueRepo, ticket_repo):
-    """
-    Tickets that were NOT redistributed still work correctly after add_queue.
-    """
     await repo.init_queue(ROOM, "A")
     await repo.take_ticket(ROOM, "A", "user1")
     await repo.take_ticket(ROOM, "A", "user2")

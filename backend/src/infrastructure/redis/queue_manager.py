@@ -15,6 +15,7 @@ from src.infrastructure.redis.client import (
     room_avg_serve_key,
     room_owner_key,
     room_queues_key,
+    room_serve_count_key,
     user_queue_key,
 )
 
@@ -23,8 +24,6 @@ class RedisQueueRepo:
     def __init__(self, redis: aioredis.Redis, queue_ttl: int) -> None:
         self._r = redis
         self._ttl = queue_ttl
-
-    # ── Room existence ─────────────────────────────────────────────────────
 
     async def room_exists(self, room_id: str) -> bool:
         labels = await self.get_queues(room_id)
@@ -35,8 +34,6 @@ class RedisQueueRepo:
 
     async def set_owner(self, room_id: str, fingerprint: str) -> None:
         await self._r.set(room_owner_key(room_id), fingerprint, ex=self._ttl)
-
-    # ── Queue management ───────────────────────────────────────────────────
 
     async def get_queues(self, room_id: str) -> list[str]:
         labels = await self._r.lrange(room_queues_key(room_id), 0, -1)
@@ -66,7 +63,7 @@ class RedisQueueRepo:
 
         lengths = {lbl: await self._r.llen(queue_list_key(room_id, lbl)) for lbl in existing}
         longest = max(lengths, key=lambda lbl: lengths[lbl])
-        if lengths[longest] >= 2:
+        if lengths[longest] >= 1:
             src_list = queue_list_key(room_id, longest)
             src_hash = queue_hash_key(room_id, longest)
             dst_list = queue_list_key(room_id, label)
@@ -74,7 +71,7 @@ class RedisQueueRepo:
             uqk = user_queue_key(room_id)
 
             all_users = await self._r.lrange(src_list, 0, -1)
-            to_move = all_users[1::2]
+            to_move = all_users[len(all_users) // 2 :]
             if to_move:
                 tickets = await self._r.hmget(src_hash, to_move)
                 async with self._r.pipeline(transaction=True) as pipe:
@@ -90,7 +87,9 @@ class RedisQueueRepo:
 
     async def remove_queue(self, room_id: str, label: str) -> bool:
         existing = await self.get_queues(room_id)
-        if label not in existing or len(existing) <= 1:
+        if len(existing) <= 1:
+            raise ValueError("last_queue")
+        if label not in existing:
             return False
 
         remaining = [lbl for lbl in existing if lbl != label]
@@ -119,7 +118,13 @@ class RedisQueueRepo:
 
     async def close_room_keys(self, room_id: str) -> None:
         labels = await self._r.lrange(room_queues_key(room_id), 0, -1) or [DEFAULT_QUEUE]
-        keys = [room_owner_key(room_id), room_queues_key(room_id), user_queue_key(room_id)]
+        keys = [
+            room_owner_key(room_id),
+            room_queues_key(room_id),
+            user_queue_key(room_id),
+            room_avg_serve_key(room_id),
+            room_serve_count_key(room_id),
+        ]
         for label in labels:
             keys += [
                 queue_list_key(room_id, label),
@@ -130,8 +135,6 @@ class RedisQueueRepo:
         for k in keys:
             await self._r.delete(k)
 
-    # ── Balancer ───────────────────────────────────────────────────────────
-
     async def pick_shortest_queue(self, room_id: str) -> str:
         labels = await self.get_queues(room_id)
         lengths = []
@@ -141,8 +144,6 @@ class RedisQueueRepo:
             serving = 1 if current.get("status") == "serving" else 0
             lengths.append(waiting + serving)
         return labels[lengths.index(min(lengths))]
-
-    # ── Ticket operations ──────────────────────────────────────────────────
 
     async def get_user_queue(self, room_id: str, fingerprint: str) -> str | None:
         mapping = await self._r.hgetall(user_queue_key(room_id))
@@ -247,15 +248,20 @@ class RedisQueueRepo:
 
         return ticket, served_user, started_at, serve_seconds
 
-    # ── Stats ──────────────────────────────────────────────────────────────
-
     async def update_avg_serve(self, room_id: str, serve_seconds: int) -> None:
-        key = room_avg_serve_key(room_id)
-        prev = await self._r.get(key)
-        new_avg = serve_seconds if prev is None else int(0.3 * serve_seconds + 0.7 * float(prev))
-        await self._r.set(key, new_avg, ex=self._ttl)
-
-    # ── Full room state ────────────────────────────────────────────────────
+        avg_key = room_avg_serve_key(room_id)
+        cnt_key = room_serve_count_key(room_id)
+        prev_avg = await self._r.get(avg_key)
+        prev_cnt = await self._r.get(cnt_key)
+        count = int(prev_cnt) + 1 if prev_cnt else 1
+        if prev_avg is None:
+            new_avg = serve_seconds
+        else:
+            new_avg = int(float(prev_avg) + (serve_seconds - float(prev_avg)) / count)
+        async with self._r.pipeline() as pipe:
+            pipe.set(avg_key, new_avg, ex=self._ttl)
+            pipe.set(cnt_key, count, ex=self._ttl)
+            await pipe.execute()
 
     async def get_state(self, room_id: str, user_id: str = "") -> dict:
         labels = await self.get_queues(room_id)
@@ -299,6 +305,7 @@ class RedisQueueRepo:
                     "length": len(queue_list),
                     "status": status,
                     "current_ticket": f"№ {current_ticket}" if current_ticket else "ОЖИДАНИЕ",
+                    "elapsed_time": label_elapsed,
                 }
             )
 
@@ -313,9 +320,10 @@ class RedisQueueRepo:
                     if m["user_id"] == user_id:
                         my_ticket = f"№ {m['ticket']}"
                         my_queue = label
-                        my_pos = str(idx + 1)
-                        my_status = status
-                        my_elapsed = label_elapsed
+                        pos = idx + 1 + (1 if status == "serving" else 0)
+                        my_pos = str(pos)
+                        my_status = "waiting"
+                        my_elapsed = 0
                         break
 
         avg_raw = await self._r.get(room_avg_serve_key(room_id))

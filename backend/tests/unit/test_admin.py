@@ -1,26 +1,3 @@
-"""
-Edge cases covered:
-- call_next success
-- call_next empty queue → 400
-- call_next wrong room → 403
-- call_next no auth → 401
-- call_next user role → 403
-- complete success
-- complete when not serving → 400
-- complete wrong room → 403
-- add queue success (next letter assigned automatically)
-- add queue rebalances: every 2nd user from longest queue moves to new queue
-- add queue when all labels used → 400
-- remove queue success
-- remove queue redistributes waiting users to shortest remaining queue
-- remove last queue → 400
-- remove non-existent queue → 400
-- stats success
-- stats wrong room → 403
-- stats no auth → 401
-"""
-
-
 async def test_call_next_success(client, admin_headers, mock_redis, mock_db):
     mock_redis.llen.return_value = 1
     mock_redis.lpop.return_value = "test_user"

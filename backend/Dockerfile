@@ -1,4 +1,6 @@
-FROM ghcr.io/astral-sh/uv:0.6-python3.14-alpine AS builder
+FROM python:3.14-slim AS builder
+
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
 
 WORKDIR /app
 
@@ -16,7 +18,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 
-FROM python:3.14-alpine AS runtime
+FROM python:3.14-slim AS runtime
 
 WORKDIR /app
 

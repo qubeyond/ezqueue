@@ -1,9 +1,15 @@
-your-domain.ru {
-    reverse_proxy backend:8000
-
-    @websockets {
-        header Connection *Upgrade*
-        header Upgrade websocket
+{$CADDY_DOMAIN} {
+    handle /api/* {
+        reverse_proxy {$BACKEND_UPSTREAM}
     }
-    reverse_proxy @websockets backend:8000
+
+    handle /ws/* {
+        reverse_proxy {$BACKEND_UPSTREAM}
+    }
+
+    handle {
+        root * /srv
+        try_files {path} /index.html
+        file_server
+    }
 }

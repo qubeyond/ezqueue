@@ -43,5 +43,9 @@ def room_avg_serve_key(room_id: str) -> str:
     return f"room:{room_id}:avg_serve"
 
 
+def room_serve_count_key(room_id: str) -> str:
+    return f"room:{room_id}:serve_count"
+
+
 async def create_redis_client(url: str) -> aioredis.Redis:
     return aioredis.from_url(url, decode_responses=True)

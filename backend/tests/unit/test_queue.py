@@ -1,19 +1,3 @@
-"""
-Edge cases covered:
-- Room not found
-- Owner gets admin token
-- User already in queue (returns existing ticket + position)
-- User currently being served (lpos=None) → position is None
-- Stale user entry (queue deleted) → cleared, fresh ticket issued
-- New user: balancer picks shortest queue
-- User picks explicit queue
-- User picks non-existent explicit queue → 404
-- Leave when not in any queue → 200 idempotent
-- Leave while active → resets current state
-- Rejoin after leave → fresh ticket
-- No auth → 401
-"""
-
 from tests.conftest import decode_token
 
 
