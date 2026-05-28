@@ -1,10 +1,8 @@
 from datetime import datetime
-from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field
 
-RoomId = Annotated[str, Field(min_length=1, max_length=10)]
-QueueLabel = Annotated[str, Field(min_length=1, max_length=4, pattern=r"^[A-Z]+$")]
+from src.api.schemas.common import QueueLabel, RoomId
 
 
 class QueueAction(BaseModel):

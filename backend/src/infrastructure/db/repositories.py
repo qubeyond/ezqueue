@@ -3,17 +3,30 @@ from datetime import UTC, datetime
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.domain.entities import TicketEventEntity
+from src.domain.entities import Room, Ticket, TicketRecord
 from src.infrastructure.db.models import RoomSession, TicketEvent
 
 
-class SQLAlchemyRoomRepo:
+class SQLAlchemyRoomRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
 
-    async def create(self, room_id: str, fingerprint: str) -> None:
-        self._s.add(RoomSession(room_id=room_id, admin_fingerprint=fingerprint))
+    async def save(self, room: Room) -> None:
+        self._s.add(RoomSession(room_id=room.room_id, admin_fingerprint=room.owner_id))
         await self._s.commit()
+
+    async def load(self, room_id: str) -> Room | None:
+        result = await self._s.execute(select(RoomSession).where(RoomSession.room_id == room_id))
+        row = result.scalar_one_or_none()
+
+        if row is None:
+            return None
+
+        return Room(
+            room_id=row.room_id,
+            owner_id=row.admin_fingerprint,
+            closed=row.closed_at is not None,
+        )
 
     async def close(self, room_id: str) -> None:
         await self._s.execute(
@@ -23,65 +36,54 @@ class SQLAlchemyRoomRepo:
         )
         await self._s.commit()
 
-    async def increment_tickets(self, room_id: str) -> None:
-        await self._s.execute(
-            update(RoomSession)
-            .where(RoomSession.room_id == room_id, RoomSession.closed_at.is_(None))
-            .values(total_tickets=RoomSession.total_tickets + 1)
-        )
-        await self._s.commit()
 
-
-class SQLAlchemyTicketRepo:
+class SQLAlchemyTicketRepository:
     def __init__(self, session: AsyncSession) -> None:
         self._s = session
 
-    async def create_event(
-        self, room_id: str, queue_label: str, ticket_num: str, fingerprint: str
-    ) -> None:
+    async def save(self, ticket: Ticket) -> None:
         self._s.add(
             TicketEvent(
-                room_id=room_id,
-                queue_label=queue_label,
-                ticket_num=ticket_num,
-                user_fingerprint=fingerprint,
+                room_id=ticket.room_id,
+                queue_label=ticket.queue_label,
+                ticket_num=ticket.num,
+                user_fingerprint=ticket.user_id,
             )
         )
         await self._s.commit()
 
-    async def mark_called(self, room_id: str, queue_label: str, ticket_num: str) -> None:
+    async def mark_called(self, room_id: str, queue_label: str, num: str, at: datetime) -> None:
         await self._s.execute(
             update(TicketEvent)
             .where(
                 TicketEvent.room_id == room_id,
-                TicketEvent.ticket_num == ticket_num,
+                TicketEvent.ticket_num == num,
                 TicketEvent.called_at.is_(None),
             )
-            .values(called_at=datetime.now(UTC))
+            .values(called_at=at)
         )
         await self._s.commit()
 
-    async def mark_completed(self, room_id: str, queue_label: str, ticket_num: str) -> None:
+    async def mark_completed(self, room_id: str, queue_label: str, num: str, at: datetime) -> None:
         await self._s.execute(
             update(TicketEvent)
             .where(
                 TicketEvent.room_id == room_id,
-                TicketEvent.ticket_num == ticket_num,
+                TicketEvent.ticket_num == num,
                 TicketEvent.completed_at.is_(None),
             )
-            .values(completed_at=datetime.now(UTC))
+            .values(completed_at=at)
         )
         await self._s.commit()
 
-    async def get_events(self, room_id: str) -> list[TicketEventEntity]:
+    async def load_history(self, room_id: str) -> list[TicketRecord]:
         result = await self._s.execute(select(TicketEvent).where(TicketEvent.room_id == room_id))
         rows = result.scalars().all()
+
         return [
-            TicketEventEntity(
-                room_id=r.room_id,
+            TicketRecord(
+                num=r.ticket_num,
                 queue_label=r.queue_label,
-                ticket_num=r.ticket_num,
-                user_fingerprint=r.user_fingerprint,
                 joined_at=r.joined_at,
                 called_at=r.called_at,
                 completed_at=r.completed_at,

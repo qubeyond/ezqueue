@@ -10,13 +10,18 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from src.config import Settings
-from src.domain.repositories import QueueRepo, RoomRepo, TicketRepo, WebSocketBroadcaster
-from src.infrastructure.db.repositories import SQLAlchemyRoomRepo, SQLAlchemyTicketRepo
-from src.infrastructure.redis.queue_manager import RedisQueueRepo, RoomConnectionManager
-from src.services.admin import AdminService
+from src.domain.repositories import (
+    EventPublisher,
+    QueueRepository,
+    RoomRepository,
+    TicketRepository,
+)
+from src.infrastructure.db.repositories import SQLAlchemyRoomRepository, SQLAlchemyTicketRepository
+from src.infrastructure.redis.connection_manager import RoomConnectionManager
+from src.infrastructure.redis.queue_repo import RedisQueueRepository
 from src.services.auth import AuthService
-from src.services.queue import QueueService
 from src.services.room import RoomService
+from src.services.visitor import VisitorService
 
 
 class InfrastructureProvider(Provider):
@@ -43,11 +48,11 @@ class InfrastructureProvider(Provider):
         return async_sessionmaker(engine, expire_on_commit=False)
 
     @provide
-    def queue_repo(self, redis: aioredis.Redis, settings: Settings) -> QueueRepo:
-        return RedisQueueRepo(redis, settings.queue_ttl)
+    def queue_repo(self, redis: aioredis.Redis, settings: Settings) -> QueueRepository:
+        return RedisQueueRepository(redis, settings.queue_ttl)
 
     @provide
-    def broadcaster(self, redis: aioredis.Redis) -> WebSocketBroadcaster:
+    def publisher(self, redis: aioredis.Redis) -> EventPublisher:
         return RoomConnectionManager(redis)
 
 
@@ -60,50 +65,41 @@ class SessionProvider(Provider):
             yield s
 
     @provide
-    def room_repo(self, session: AsyncSession) -> RoomRepo:
-        return SQLAlchemyRoomRepo(session)
+    def room_repo(self, session: AsyncSession) -> RoomRepository:
+        return SQLAlchemyRoomRepository(session)
 
     @provide
-    def ticket_repo(self, session: AsyncSession) -> TicketRepo:
-        return SQLAlchemyTicketRepo(session)
+    def ticket_repo(self, session: AsyncSession) -> TicketRepository:
+        return SQLAlchemyTicketRepository(session)
 
 
 class ServiceProvider(Provider):
     scope = Scope.REQUEST
 
-    @provide
+    @provide(scope=Scope.APP)
     def auth_service(self, settings: Settings) -> AuthService:
         return AuthService(settings)
 
     @provide
     def room_service(
         self,
-        queue_repo: QueueRepo,
-        room_repo: RoomRepo,
+        queue_repo: QueueRepository,
+        room_repo: RoomRepository,
+        ticket_repo: TicketRepository,
         auth_service: AuthService,
-        broadcaster: WebSocketBroadcaster,
+        publisher: EventPublisher,
     ) -> RoomService:
-        return RoomService(queue_repo, room_repo, auth_service, broadcaster)
+        return RoomService(queue_repo, room_repo, ticket_repo, auth_service, publisher)
 
     @provide
-    def queue_service(
+    def visitor_service(
         self,
-        queue_repo: QueueRepo,
-        room_repo: RoomRepo,
-        ticket_repo: TicketRepo,
+        queue_repo: QueueRepository,
+        ticket_repo: TicketRepository,
         auth_service: AuthService,
-        broadcaster: WebSocketBroadcaster,
-    ) -> QueueService:
-        return QueueService(queue_repo, room_repo, ticket_repo, auth_service, broadcaster)
-
-    @provide
-    def admin_service(
-        self,
-        queue_repo: QueueRepo,
-        ticket_repo: TicketRepo,
-        broadcaster: WebSocketBroadcaster,
-    ) -> AdminService:
-        return AdminService(queue_repo, ticket_repo, broadcaster)
+        publisher: EventPublisher,
+    ) -> VisitorService:
+        return VisitorService(queue_repo, ticket_repo, auth_service, publisher)
 
 
 def create_container() -> AsyncContainer:

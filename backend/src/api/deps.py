@@ -23,4 +23,11 @@ async def require_admin(
 ) -> dict:
     if user.get("role") != "admin":
         raise HTTPException(status_code=403, detail="Требуются права администратора")
+
+    return user
+
+
+async def require_room_admin(
+    user: Annotated[dict, Depends(require_admin)],
+) -> dict:
     return user

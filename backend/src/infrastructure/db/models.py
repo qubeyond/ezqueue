@@ -32,15 +32,3 @@ class TicketEvent(Base):
     )
     called_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
-
-    @property
-    def wait_seconds(self) -> int | None:
-        if self.called_at:
-            return int((self.called_at - self.joined_at).total_seconds())
-        return None
-
-    @property
-    def serve_seconds(self) -> int | None:
-        if self.called_at and self.completed_at:
-            return int((self.completed_at - self.called_at).total_seconds())
-        return None

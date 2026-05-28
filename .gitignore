@@ -15,3 +15,6 @@ wheels/
 node_modules/
 dist/
 *.local
+
+# Credentials
+CREDITS.md

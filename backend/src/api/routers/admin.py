@@ -15,7 +15,7 @@ from src.api.schemas.admin import (
     RoomStatsResponse,
     TicketTimeline,
 )
-from src.services.admin import AdminService
+from src.services.room import RoomService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -30,12 +30,13 @@ def _check_room(room_id: str, user: dict) -> None:
 async def call_next(
     payload: QueueAction,
     user: Annotated[dict, Depends(require_admin)],
-    admin_service: FromDishka[AdminService],
+    room_service: FromDishka[RoomService],
 ):
-    room_id = payload.room_id.upper()
-    _check_room(room_id, user)
-    result = await admin_service.call_next(room_id, payload.queue_label)
-    return CallNextResponse(status="called", queue_label=result.queue_label, ticket=result.ticket)
+    _check_room(payload.room_id.upper(), user)
+
+    result = await room_service.call_next(payload.room_id.upper(), payload.queue_label)
+
+    return CallNextResponse(queue_label=result.queue_label, ticket=result.ticket)
 
 
 @router.post("/complete", response_model=CompleteServingResponse)
@@ -43,12 +44,13 @@ async def call_next(
 async def complete_serving(
     payload: QueueAction,
     user: Annotated[dict, Depends(require_admin)],
-    admin_service: FromDishka[AdminService],
+    room_service: FromDishka[RoomService],
 ):
-    room_id = payload.room_id.upper()
-    _check_room(room_id, user)
-    await admin_service.complete_serving(room_id, payload.queue_label)
-    return CompleteServingResponse(status="completed")
+    _check_room(payload.room_id.upper(), user)
+
+    await room_service.complete_serving(payload.room_id.upper(), payload.queue_label)
+
+    return CompleteServingResponse()
 
 
 @router.post("/queue/add", response_model=QueueMutationResponse)
@@ -56,11 +58,12 @@ async def complete_serving(
 async def add_queue(
     payload: AddQueueRequest,
     user: Annotated[dict, Depends(require_admin)],
-    admin_service: FromDishka[AdminService],
+    room_service: FromDishka[RoomService],
 ):
-    room_id = payload.room_id.upper()
-    _check_room(room_id, user)
-    result = await admin_service.add_queue(room_id)
+    _check_room(payload.room_id.upper(), user)
+
+    result = await room_service.add_queue(payload.room_id.upper())
+
     return QueueMutationResponse(status="created", queue_label=result.queue_label)
 
 
@@ -69,11 +72,12 @@ async def add_queue(
 async def remove_queue(
     payload: RemoveQueueRequest,
     user: Annotated[dict, Depends(require_admin)],
-    admin_service: FromDishka[AdminService],
+    room_service: FromDishka[RoomService],
 ):
-    room_id = payload.room_id.upper()
-    _check_room(room_id, user)
-    result = await admin_service.remove_queue(room_id, payload.queue_label)
+    _check_room(payload.room_id.upper(), user)
+
+    result = await room_service.remove_queue(payload.room_id.upper(), payload.queue_label)
+
     return QueueMutationResponse(status="removed", queue_label=result.queue_label)
 
 
@@ -82,24 +86,25 @@ async def remove_queue(
 async def room_stats(
     room_id: str,
     user: Annotated[dict, Depends(require_admin)],
-    admin_service: FromDishka[AdminService],
+    room_service: FromDishka[RoomService],
 ):
-    room_id = room_id.upper()
-    _check_room(room_id, user)
-    result = await admin_service.get_stats(room_id)
+    _check_room(room_id.upper(), user)
+
+    result = await room_service.get_stats(room_id.upper())
+
     return RoomStatsResponse(
-        room_id=result.room_id,
-        total_tickets=result.total_tickets,
-        completed=result.completed,
-        avg_serve_seconds=result.avg_serve_seconds,
+        room_id=result["room_id"],
+        total_tickets=result["total_tickets"],
+        completed=result["completed"],
+        avg_serve_seconds=result["avg_serve_seconds"],
         timeline=[
             TicketTimeline(
-                ticket=t.ticket,
+                ticket=t.num,
                 queue_label=t.queue_label,
                 joined_at=t.joined_at,
                 wait_seconds=t.wait_seconds,
                 serve_seconds=t.serve_seconds,
             )
-            for t in result.timeline
+            for t in result["timeline"]
         ],
     )

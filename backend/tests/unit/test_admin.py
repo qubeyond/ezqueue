@@ -1,7 +1,10 @@
-async def test_call_next_success(client, admin_headers, mock_redis, mock_db):
-    mock_redis.llen.return_value = 1
-    mock_redis.lpop.return_value = "test_user"
-    mock_redis.hget.return_value = "A7"
+from src.domain.entities import Queue, Ticket
+
+
+async def test_call_next_success(client, admin_headers, mock_queue_repo, mock_ticket_repo):
+    ticket = Ticket(num="A7", user_id="u1", queue_label="A", room_id="ROOM01")
+    queue = Queue(label="A", room_id="ROOM01", waiting=[ticket])
+    mock_queue_repo.load.return_value = queue
     resp = await client.post(
         "/api/v1/admin/next",
         json={"room_id": "ROOM01", "queue_label": "A"},
@@ -14,8 +17,8 @@ async def test_call_next_success(client, admin_headers, mock_redis, mock_db):
     assert data["queue_label"] == "A"
 
 
-async def test_call_next_empty_queue(client, admin_headers, mock_redis):
-    mock_redis.llen.return_value = 0
+async def test_call_next_empty_queue(client, admin_headers, mock_queue_repo):
+    mock_queue_repo.load.return_value = Queue(label="A", room_id="ROOM01", waiting=[])
     resp = await client.post(
         "/api/v1/admin/next",
         json={"room_id": "ROOM01", "queue_label": "A"},
@@ -48,8 +51,12 @@ async def test_call_next_user_role_forbidden(client, user_headers):
     assert resp.status_code == 403
 
 
-async def test_complete_serving_success(client, admin_headers, mock_redis, mock_db):
-    mock_redis.hgetall.return_value = {"status": "serving", "ticket": "A7", "active_user_id": "u1"}
+async def test_complete_serving_success(client, admin_headers, mock_queue_repo, mock_ticket_repo):
+    from datetime import UTC, datetime
+
+    ticket = Ticket(num="A7", user_id="u1", queue_label="A", room_id="ROOM01")
+    queue = Queue(label="A", room_id="ROOM01", serving=ticket, serving_since=datetime.now(UTC))
+    mock_queue_repo.load.return_value = queue
     resp = await client.post(
         "/api/v1/admin/complete",
         json={"room_id": "ROOM01", "queue_label": "A"},
@@ -59,8 +66,8 @@ async def test_complete_serving_success(client, admin_headers, mock_redis, mock_
     assert resp.json()["status"] == "completed"
 
 
-async def test_complete_serving_not_active(client, admin_headers, mock_redis):
-    mock_redis.hgetall.return_value = {"status": "waiting", "ticket": "", "active_user_id": ""}
+async def test_complete_serving_not_active(client, admin_headers, mock_queue_repo):
+    mock_queue_repo.load.return_value = Queue(label="A", room_id="ROOM01", serving=None)
     resp = await client.post(
         "/api/v1/admin/complete",
         json={"room_id": "ROOM01", "queue_label": "A"},
@@ -78,9 +85,8 @@ async def test_complete_wrong_room(client, admin_headers):
     assert resp.status_code == 403
 
 
-async def test_add_queue_success(client, admin_headers, mock_redis):
-    mock_redis.lrange.return_value = ["A"]
-    mock_redis.llen.return_value = 0
+async def test_add_queue_success(client, admin_headers, mock_queue_repo):
+    mock_queue_repo.load_all.return_value = [Queue(label="A", room_id="ROOM01")]
     resp = await client.post(
         "/api/v1/admin/queue/add",
         json={"room_id": "ROOM01"},
@@ -92,14 +98,11 @@ async def test_add_queue_success(client, admin_headers, mock_redis):
     assert data["queue_label"] == "B"
 
 
-async def test_add_queue_rebalances_users(client, admin_headers, mock_redis):
-    mock_redis.lrange.side_effect = [
-        ["A"],
-        ["A"],
-        ["u1", "u2", "u3", "u4"],
+async def test_add_queue_rebalances_users(client, admin_headers, mock_queue_repo):
+    tickets = [
+        Ticket(num=f"A{i}", user_id=f"u{i}", queue_label="A", room_id="ROOM01") for i in range(1, 5)
     ]
-    mock_redis.llen.return_value = 4
-    mock_redis.hmget.return_value = ["A2", "A4"]
+    mock_queue_repo.load_all.return_value = [Queue(label="A", room_id="ROOM01", waiting=tickets)]
     resp = await client.post(
         "/api/v1/admin/queue/add",
         json={"room_id": "ROOM01"},
@@ -107,11 +110,59 @@ async def test_add_queue_rebalances_users(client, admin_headers, mock_redis):
     )
     assert resp.status_code == 200
     assert resp.json()["queue_label"] == "B"
-    mock_redis.pipeline.assert_called()
+    assert mock_queue_repo.save.call_count >= 2
+
+    saved_calls = {call.args[0].label: call.args[0] for call in mock_queue_repo.save.call_args_list}
+    queue_b = saved_calls["B"]
+    assert len(queue_b.waiting) == 2
+    for ticket in queue_b.waiting:
+        assert ticket.queue_label == "B", (
+            f"ticket {ticket.num} still has old label {ticket.queue_label}"
+        )
 
 
-async def test_add_queue_max_reached(client, admin_headers, mock_redis):
-    mock_redis.lrange.return_value = list("ABCDEFGHIJ")
+async def test_add_queue_rebalance_ticket_counter_updated(client, admin_headers, mock_queue_repo):
+    tickets = [
+        Ticket(num=f"A{i}", user_id=f"u{i}", queue_label="A", room_id="ROOM01") for i in range(1, 5)
+    ]
+    mock_queue_repo.load_all.return_value = [
+        Queue(label="A", room_id="ROOM01", waiting=tickets, ticket_counter=4)
+    ]
+    resp = await client.post(
+        "/api/v1/admin/queue/add",
+        json={"room_id": "ROOM01"},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200
+    saved_calls = {call.args[0].label: call.args[0] for call in mock_queue_repo.save.call_args_list}
+    queue_b = saved_calls["B"]
+    assert queue_b.ticket_counter == len(queue_b.waiting)
+
+
+async def test_add_queue_rebalances_single_waiting(client, admin_headers, mock_queue_repo):
+    """Один ожидающий при наличии serving — должен перейти в новую очередь."""
+    serving = Ticket(num="A1", user_id="u1", queue_label="A", room_id="ROOM01")
+    waiting = Ticket(num="A2", user_id="u2", queue_label="A", room_id="ROOM01")
+    mock_queue_repo.load_all.return_value = [
+        Queue(label="A", room_id="ROOM01", waiting=[waiting], serving=serving, ticket_counter=2)
+    ]
+    resp = await client.post(
+        "/api/v1/admin/queue/add",
+        json={"room_id": "ROOM01"},
+        headers=admin_headers,
+    )
+    assert resp.status_code == 200
+    saved_calls = {call.args[0].label: call.args[0] for call in mock_queue_repo.save.call_args_list}
+    queue_b = saved_calls["B"]
+    assert len(queue_b.waiting) == 1
+    assert queue_b.waiting[0].user_id == "u2"
+    assert queue_b.waiting[0].queue_label == "B"
+
+
+async def test_add_queue_max_reached(client, admin_headers, mock_queue_repo):
+    mock_queue_repo.load_all.return_value = [
+        Queue(label=lbl, room_id="ROOM01") for lbl in "ABCDEFGHJK"
+    ]
     resp = await client.post(
         "/api/v1/admin/queue/add",
         json={"room_id": "ROOM01"},
@@ -120,13 +171,11 @@ async def test_add_queue_max_reached(client, admin_headers, mock_redis):
     assert resp.status_code == 400
 
 
-async def test_remove_queue_success(client, admin_headers, mock_redis):
-    mock_redis.lrange.side_effect = [
-        ["A", "B"],
-        ["A", "B"],
-        [],
+async def test_remove_queue_success(client, admin_headers, mock_queue_repo):
+    mock_queue_repo.load_all.return_value = [
+        Queue(label="A", room_id="ROOM01"),
+        Queue(label="B", room_id="ROOM01"),
     ]
-    mock_redis.llen.return_value = 0
     resp = await client.request(
         "DELETE",
         "/api/v1/admin/queue/remove",
@@ -137,14 +186,15 @@ async def test_remove_queue_success(client, admin_headers, mock_redis):
     assert resp.json()["status"] == "removed"
 
 
-async def test_remove_queue_redistributes_users(client, admin_headers, mock_redis):
-    mock_redis.lrange.side_effect = [
-        ["A", "B"],
-        ["A", "B"],
-        ["u1", "u2"],
+async def test_remove_queue_redistributes_users(client, admin_headers, mock_queue_repo):
+    tickets = [
+        Ticket(num="B1", user_id="u1", queue_label="B", room_id="ROOM01"),
+        Ticket(num="B2", user_id="u2", queue_label="B", room_id="ROOM01"),
     ]
-    mock_redis.llen.return_value = 1
-    mock_redis.hmget.return_value = ["B1", "B2"]
+    mock_queue_repo.load_all.return_value = [
+        Queue(label="A", room_id="ROOM01"),
+        Queue(label="B", room_id="ROOM01", waiting=tickets),
+    ]
     resp = await client.request(
         "DELETE",
         "/api/v1/admin/queue/remove",
@@ -152,11 +202,12 @@ async def test_remove_queue_redistributes_users(client, admin_headers, mock_redi
         headers=admin_headers,
     )
     assert resp.status_code == 200
-    mock_redis.pipeline.assert_called()
+    saved_queue = mock_queue_repo.save.call_args[0][0]
+    assert len(saved_queue.waiting) == 2
 
 
-async def test_remove_last_queue_forbidden(client, admin_headers, mock_redis):
-    mock_redis.lrange.return_value = ["A"]
+async def test_remove_last_queue_forbidden(client, admin_headers, mock_queue_repo):
+    mock_queue_repo.load_all.return_value = [Queue(label="A", room_id="ROOM01")]
     resp = await client.request(
         "DELETE",
         "/api/v1/admin/queue/remove",
@@ -166,18 +217,21 @@ async def test_remove_last_queue_forbidden(client, admin_headers, mock_redis):
     assert resp.status_code == 400
 
 
-async def test_remove_nonexistent_queue(client, admin_headers, mock_redis):
-    mock_redis.lrange.return_value = ["A"]
+async def test_remove_nonexistent_queue(client, admin_headers, mock_queue_repo):
+    mock_queue_repo.load_all.return_value = [
+        Queue(label="A", room_id="ROOM01"),
+        Queue(label="B", room_id="ROOM01"),
+    ]
     resp = await client.request(
         "DELETE",
         "/api/v1/admin/queue/remove",
-        json={"room_id": "ROOM01", "queue_label": "Z"},
+        json={"room_id": "ROOM01", "queue_label": "C"},
         headers=admin_headers,
     )
-    assert resp.status_code == 400
+    assert resp.status_code == 404
 
 
-async def test_stats_success(client, admin_headers, mock_db):
+async def test_stats_success(client, admin_headers, mock_ticket_repo):
     resp = await client.get("/api/v1/admin/stats/ROOM01", headers=admin_headers)
     assert resp.status_code == 200
     data = resp.json()

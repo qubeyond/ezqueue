@@ -21,6 +21,7 @@ class AuthService:
             "type": "access",
             "exp": datetime.now(UTC) + timedelta(minutes=self._settings.jwt_expire_minutes),
         }
+
         return jwt.encode(
             payload, self._settings.jwt_secret, algorithm=self._settings.jwt_algorithm
         )
@@ -31,12 +32,14 @@ class AuthService:
             "type": "refresh",
             "exp": datetime.now(UTC) + timedelta(days=self._settings.refresh_token_expire_days),
         }
+
         return jwt.encode(
             payload, self._settings.jwt_secret, algorithm=self._settings.jwt_algorithm
         )
 
     def set_refresh_cookie(self, response: Response, fingerprint: str) -> None:
         token = self.create_refresh_token(fingerprint)
+
         response.set_cookie(
             key=REFRESH_COOKIE,
             value=token,
@@ -60,12 +63,16 @@ class AuthService:
     def verify_user(self, credentials: HTTPAuthorizationCredentials | None) -> dict:
         if not credentials:
             raise HTTPException(status_code=401, detail="Требуется авторизация")
+
         payload = self.decode_token(credentials.credentials)
+
         if payload.get("type") != "access":
             raise HTTPException(status_code=401, detail="Невалидный тип токена")
+
         return payload
 
     def verify_admin(self, user: dict) -> dict:
         if user.get("role") != "admin":
             raise HTTPException(status_code=403, detail="Требуются права администратора")
+
         return user

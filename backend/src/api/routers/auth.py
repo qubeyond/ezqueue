@@ -21,7 +21,9 @@ async def get_token(
     fingerprint: Annotated[str, Query(min_length=8, max_length=128, pattern=r"^[\x21-\x7E]+$")],
 ):
     access_token = auth_service.create_token(fingerprint=fingerprint, role="user")
+
     auth_service.set_refresh_cookie(response, fingerprint)
+
     return TokenResponse(access_token=access_token)
 
 
@@ -36,12 +38,17 @@ async def refresh_token(
 ):
     if not refresh_token:
         raise HTTPException(status_code=401, detail="Refresh токен отсутствует")
+
     payload = auth_service.decode_token(refresh_token)
+
     if payload.get("type") != "refresh":
         raise HTTPException(status_code=401, detail="Невалидный тип токена")
+
     fingerprint: str = payload["sub"]
     access_token = auth_service.create_token(fingerprint=fingerprint, role="user")
+
     auth_service.set_refresh_cookie(response, fingerprint)
+
     return TokenResponse(access_token=access_token)
 
 
@@ -52,4 +59,5 @@ async def logout(
     response: Response,
 ):
     response.delete_cookie(key=REFRESH_COOKIE, path="/api/v1/auth")
+
     return {"status": "ok"}

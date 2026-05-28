@@ -2,7 +2,7 @@ from typing import Annotated
 
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Request
 
 from src.api.deps import get_current_user, require_admin
 from src.api.limiter import limiter
@@ -21,6 +21,7 @@ async def create_room(
     room_service: FromDishka[RoomService],
 ):
     result = await room_service.create_room(user["sub"])
+
     return RoomCreateResponse(room_id=result.room_id, access_token=result.access_token)
 
 
@@ -34,6 +35,7 @@ async def close_room(
     room_service: FromDishka[RoomService],
 ):
     result = await room_service.close_room(room_id.upper(), user["sub"])
+
     return RoomCloseResponse(status=result.status)
 
 
@@ -43,6 +45,5 @@ async def room_state(
     room_id: str,
     user: Annotated[dict, Depends(get_current_user)],
     room_service: FromDishka[RoomService],
-    user_id: Annotated[str, Query()] = "",
 ):
-    return await room_service.get_state(room_id.upper(), user_id or user["sub"])
+    return await room_service.get_state(room_id.upper(), user["sub"])

@@ -1,14 +1,4 @@
-import secrets
-
 import redis.asyncio as aioredis
-
-ROOM_ID_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
-ROOM_ID_LENGTH = 6
-DEFAULT_QUEUE = "A"
-
-
-def generate_room_id() -> str:
-    return "".join(secrets.choice(ROOM_ID_ALPHABET) for _ in range(ROOM_ID_LENGTH))
 
 
 def queue_list_key(room_id: str, label: str) -> str:
