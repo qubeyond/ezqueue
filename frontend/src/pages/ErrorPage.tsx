@@ -1,3 +1,5 @@
+import { Button } from '@/components/ui/Button'
+
 interface Props {
   code?: number
   title: string
@@ -35,11 +37,11 @@ export function ErrorPage({ code, title, message, onRetry }: Props) {
           </div>
         </div>
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="btn-stack">
           {onRetry && (
-            <button className="btn btn-primary" onClick={onRetry}>
+            <Button variant="primary" onClick={onRetry}>
               Попробовать снова
-            </button>
+            </Button>
           )}
           <a className="btn btn-secondary" href="/">
             На главную

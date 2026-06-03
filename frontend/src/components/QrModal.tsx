@@ -1,12 +1,15 @@
 import { useEffect, useRef } from 'react'
 import QRCode from 'qrcode'
+import { Modal, ModalActions } from '@/components/ui/Modal'
+import { Button } from '@/components/ui/Button'
 
 interface Props {
   url: string
+  roomId?: string
   onClose: () => void
 }
 
-export function QrModal({ url, onClose }: Props) {
+export function QrModal({ url, roomId, onClose }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -19,58 +22,74 @@ export function QrModal({ url, onClose }: Props) {
     }
   }, [url])
 
+  const shortCode = roomId || url.split('/').pop() || 'room'
+
+  async function handleDownload() {
+    // jspdf тяжёлый и нужен только здесь — грузим лениво, чтобы не раздувать
+    // основной бандл (QR-печать — редкое админское действие).
+    const { jsPDF } = await import('jspdf')
+
+    // Дождаться шрифтов, иначе canvas отрисует системным фолбэком.
+    if (document.fonts?.ready) await document.fonts.ready
+
+    // Встроенные шрифты jsPDF не поддерживают кириллицу (отсюда артефакты).
+    // Поэтому всю печатную страницу рисуем на canvas (браузер умеет кириллицу),
+    // а в PDF вставляем одной картинкой.
+    const scale = 3 // ретина-резкость для печати
+    const W = 794 // A4 @ ~96dpi, портрет
+    const H = 1123
+    const cv = document.createElement('canvas')
+    cv.width = W * scale
+    cv.height = H * scale
+    const ctx = cv.getContext('2d')!
+    ctx.scale(scale, scale)
+
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, W, H)
+    ctx.textAlign = 'center'
+    ctx.fillStyle = '#1a1a18'
+
+    const font = 'Inter, -apple-system, "Segoe UI", system-ui, sans-serif'
+    ctx.font = `700 38px ${font}`
+    ctx.fillText('Электронная очередь', W / 2, 130)
+    ctx.font = `400 20px ${font}`
+    ctx.fillStyle = '#6b6860'
+    ctx.fillText('Отсканируйте QR-код, чтобы занять место', W / 2, 168)
+
+    // QR прямо на эту же canvas.
+    const qrPx = 420
+    const qrX = (W - qrPx) / 2
+    const qrY = 230
+    const qrCanvas = document.createElement('canvas')
+    await QRCode.toCanvas(qrCanvas, url, {
+      width: qrPx * scale,
+      margin: 1,
+      color: { dark: '#000000', light: '#ffffff' },
+    })
+    ctx.drawImage(qrCanvas, qrX, qrY, qrPx, qrPx)
+
+    ctx.fillStyle = '#1a1a18'
+    ctx.font = `800 52px ${font}`
+    ctx.fillText(shortCode, W / 2, qrY + qrPx + 80)
+    ctx.fillStyle = '#9e9b95'
+    ctx.font = `400 16px ${font}`
+    ctx.fillText(url, W / 2, qrY + qrPx + 112)
+
+    const pdf = new jsPDF({ unit: 'pt', format: 'a4' })
+    const pw = pdf.internal.pageSize.getWidth()
+    const ph = pdf.internal.pageSize.getHeight()
+    pdf.addImage(cv.toDataURL('image/png'), 'PNG', 0, 0, pw, ph)
+    pdf.save(`queue-${shortCode.toLowerCase()}-qr.pdf`)
+  }
+
   return (
-    <div
-      style={{
-        position: 'fixed', inset: 0,
-        background: 'rgba(0,0,0,.35)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        zIndex: 10000,
-        animation: 'fadeIn .15s ease-out',
-        padding: '0 16px',
-      }}
-      onClick={onClose}
-    >
-      <div
-        style={{
-          background: 'var(--surface)',
-          border: '1px solid var(--border)',
-          borderRadius: 'var(--radius)',
-          padding: '28px 24px 20px',
-          width: '100%',
-          maxWidth: 320,
-          boxShadow: 'var(--shadow-lg)',
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-          gap: 16,
-        }}
-        onClick={e => e.stopPropagation()}
-      >
-        <div style={{ fontSize: '.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '.09em', color: 'var(--text-3)' }}>
-          Отсканируйте для входа
-        </div>
-
-        <canvas ref={canvasRef} style={{ borderRadius: 8, display: 'block' }} />
-
-        <div style={{
-          fontSize: '.8rem',
-          fontFamily: 'monospace',
-          color: 'var(--text-2)',
-          background: 'var(--surface2)',
-          border: '1px solid var(--border)',
-          borderRadius: 6,
-          padding: '4px 10px',
-          letterSpacing: '.05em',
-          fontWeight: 600,
-        }}>
-          {url.split('/').pop()}
-        </div>
-
-        <button className="btn btn-secondary btn-sm" style={{ width: '100%' }} onClick={onClose}>
-          Закрыть
-        </button>
-      </div>
-    </div>
+    <Modal onClose={onClose} size="qr" title="Отсканируйте для входа">
+      <canvas ref={canvasRef} className="qr-canvas" />
+      <div className="qr-code-chip">{shortCode}</div>
+      <ModalActions>
+        <Button variant="secondary" onClick={onClose}>Закрыть</Button>
+        <Button variant="primary" onClick={handleDownload}>Скачать PDF</Button>
+      </ModalActions>
+    </Modal>
   )
 }

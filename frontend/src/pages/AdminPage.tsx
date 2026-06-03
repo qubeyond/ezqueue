@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from 'react'
 import { RoomHeader } from '@/components/RoomHeader'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { QrModal } from '@/components/QrModal'
+import { Button } from '@/components/ui/Button'
+import { Card, StatRow } from '@/components/ui/Card'
 import { apiFetch, getAccessToken, ensureToken } from '@/lib/auth'
 import { useTimer, fmtTime, fmtDuration } from '@/hooks/useTimer'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -116,7 +118,11 @@ export function AdminPage({ roomId, onClose, onRoomClosed, onToast }: Props) {
   }, [])
 
   async function handleCloseRoom() {
-    if (!await confirm('Закрыть комнату и завершить приём?')) return
+    if (!await confirm({
+      message: 'Закрыть комнату и завершить приём? Все ожидающие будут отключены.',
+      confirmLabel: 'Закрыть',
+      danger: true,
+    })) return
     closedRef.current = true
     try { await apiFetch(`/api/v1/rooms/${roomId}`, { method: 'DELETE' }) } catch (_) {}
     onClose()
@@ -153,7 +159,11 @@ export function AdminPage({ roomId, onClose, onRoomClosed, onToast }: Props) {
   }
 
   async function handleRemoveQueue(queueLabel: string) {
-    if (!await confirm(`Удалить очередь ${queueLabel}?`)) return
+    if (!await confirm({
+      message: `Удалить очередь ${queueLabel}? Ожидающие перейдут в другие очереди.`,
+      confirmLabel: 'Удалить',
+      danger: true,
+    })) return
     try {
       const res = await apiFetch('/api/v1/admin/queue/remove', {
         method: 'DELETE',
@@ -166,33 +176,36 @@ export function AdminPage({ roomId, onClose, onRoomClosed, onToast }: Props) {
     } catch (e) { onToast((e as Error).message, 'error') }
   }
 
-  function handleCopy() {
-    navigator.clipboard.writeText(roomId).then(() => onToast('ID скопирован', 'info'))
-  }
-
   const qrUrl = `${location.origin}/?room=${roomId}`
+
+  function handleCopy() {
+    navigator.clipboard.writeText(qrUrl).then(
+      () => onToast('Ссылка на комнату скопирована', 'success'),
+      () => onToast('Не удалось скопировать', 'error'),
+    )
+  }
 
   return (
     <div className="page-wrap">
       {dialogProps && <ConfirmDialog {...dialogProps} />}
-      {showQr && <QrModal url={qrUrl} onClose={() => setShowQr(false)} />}
+      {showQr && <QrModal url={qrUrl} roomId={roomId} onClose={() => setShowQr(false)} />}
       <RoomHeader
         roomId={roomId}
         label="Комната"
         onCopy={handleCopy}
         onQr={() => setShowQr(true)}
         action={
-          <button className="btn btn-danger btn-sm" onClick={handleCloseRoom}>Закрыть</button>
+          <Button variant="danger" size="sm" fullWidth={false} onClick={handleCloseRoom}>
+            Закрыть
+          </Button>
         }
       />
 
-      <div style={{ width: '100%', maxWidth: 440 }}>
+      <div className="page-content">
         {loading ? (
-          <div className="card">
-            <button className="btn btn-secondary" disabled>
-              <span className="spinner" /> Загрузка...
-            </button>
-          </div>
+          <Card>
+            <Button variant="secondary" loading disabled>Загрузка...</Button>
+          </Card>
         ) : (
           queues.map(q => (
             <QueueCard
@@ -205,23 +218,14 @@ export function AdminPage({ roomId, onClose, onRoomClosed, onToast }: Props) {
           ))
         )}
 
-        <div style={{ marginBottom: 16 }}>
-          <button className="btn btn-secondary" onClick={handleAddQueue}>
-            + Добавить очередь
-          </button>
+        <div className="add-queue-row">
+          <Button variant="secondary" onClick={handleAddQueue}>+ Добавить очередь</Button>
         </div>
 
-        <div className="card">
-          <div className="card-title">Статистика сессии</div>
-          <div className="stat-row">
-            <span className="stat-label">Всего обслужено</span>
-            <span className="stat-value">{stats?.completed ?? '—'}</span>
-          </div>
-          <div className="stat-row">
-            <span className="stat-label">Среднее время</span>
-            <span className="stat-value">{stats?.avg ? fmtDuration(stats.avg) : '—'}</span>
-          </div>
-        </div>
+        <Card title="Статистика сессии">
+          <StatRow label="Всего обслужено">{stats?.completed ?? '—'}</StatRow>
+          <StatRow label="Среднее время">{stats?.avg ? fmtDuration(stats.avg) : '—'}</StatRow>
+        </Card>
       </div>
     </div>
   )
@@ -244,21 +248,24 @@ function QueueCard({ queue: q, onNext, onComplete, onRemove }: QueueCardProps) {
   }
 
   return (
-    <div className="card" style={{ marginBottom: 12 }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ fontSize: '1rem', fontWeight: 700 }}>Очередь {q.label}</span>
+    <Card className="queue-card">
+      <div className="queue-card-head">
+        <div className="queue-card-title">
+          <span className="queue-card-name">Очередь {q.label}</span>
           <span className={`chip ${q.status}`}>
             {q.status === 'serving' ? 'Идёт приём' : 'Ожидание'}
           </span>
         </div>
-        <button
-          className="btn btn-secondary btn-sm"
+        <Button
+          variant="secondary"
+          size="sm"
+          fullWidth={false}
+          className="queue-remove-btn"
+          aria-label={`Удалить очередь ${q.label}`}
           onClick={() => handleAction(() => onRemove(q.label))}
-          style={{ opacity: 0.6 }}
         >
           ✕
-        </button>
+        </Button>
       </div>
 
       <div className="adm-ticket-big">{q.current_ticket}</div>
@@ -269,23 +276,23 @@ function QueueCard({ queue: q, onNext, onComplete, onRemove }: QueueCardProps) {
         </div>
       )}
 
-      <div style={{ margin: '12px 0 8px' }}>
+      <div className="queue-card-action">
         {q.status === 'serving' ? (
-          <button
-            className="btn btn-danger-solid"
-            disabled={actionLoading}
+          <Button
+            variant="danger-solid"
+            loading={actionLoading}
             onClick={() => handleAction(() => onComplete(q.label))}
           >
-            {actionLoading ? <span className="spinner" /> : `Завершить · ${q.label}`}
-          </button>
+            {!actionLoading && `Завершить · ${q.label}`}
+          </Button>
         ) : (
-          <button
-            className="btn btn-success-solid"
-            disabled={actionLoading}
+          <Button
+            variant="success-solid"
+            loading={actionLoading}
             onClick={() => handleAction(() => onNext(q.label))}
           >
-            {actionLoading ? <span className="spinner" /> : `Вызвать следующего · ${q.label}`}
-          </button>
+            {!actionLoading && `Вызвать следующего · ${q.label}`}
+          </Button>
         )}
       </div>
 
@@ -296,6 +303,6 @@ function QueueCard({ queue: q, onNext, onComplete, onRemove }: QueueCardProps) {
           <span className="q-chip">{q.length} чел. ожидают</span>
         )}
       </div>
-    </div>
+    </Card>
   )
 }

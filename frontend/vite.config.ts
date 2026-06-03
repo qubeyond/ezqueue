@@ -30,5 +30,10 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    rollupOptions: {
+      // jspdf динамически импортирует html2canvas/dompurify только для .html()-рендера,
+      // который мы не используем (только addImage/text/save). Не бандлим их.
+      external: ['html2canvas', 'dompurify', 'canvg'],
+    },
   },
 })

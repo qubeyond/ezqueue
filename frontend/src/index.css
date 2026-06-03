@@ -2,6 +2,13 @@
 
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
+html {
+  /* На мобильных 100vh не учитывает адресную строку и даёт лишний скролл.
+     Фиксируем размер вьюпорта и убираем горизонтальное переполнение. */
+  height: 100%;
+  -webkit-text-size-adjust: 100%;
+}
+
 :root {
   --bg:        #f5f4ef;
   --surface:   #ffffff;
@@ -29,19 +36,24 @@ body {
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
-  min-height: 100vh;
-  padding: 0 16px 40px;
+  /* Тело ровно во вьюпорт. Высоту держит только #root, отступы — внутри
+     .page-wrap, чтобы padding не добавлялся к 100dvh и не давал лишний скролл. */
+  min-height: 100dvh;
+  overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
 }
 
-#root { min-height: 100vh; }
+#root { display: flex; flex-direction: column; min-height: 100dvh; }
 
 /* ── Layout ── */
 .page-wrap {
   display: flex;
   flex-direction: column;
   align-items: center;
-  min-height: 100vh;
+  flex: 1 0 auto;
+  width: 100%;
+  max-width: 100%;
+  padding: 0 16px calc(24px + env(safe-area-inset-bottom));
   animation: fadeIn 0.28s ease-out;
 }
 
@@ -91,6 +103,12 @@ body {
   max-width: 440px;
   padding: 20px 0 0;
   margin-bottom: 28px;
+}
+.page-header-left { display: flex; align-items: center; gap: 14px; }
+.page-header-actions { display: flex; align-items: center; gap: 10px; }
+.room-meta {
+  height: 38px;
+  display: flex; flex-direction: column; justify-content: center; gap: 2px;
 }
 .room-label { font-size: .75rem; color: var(--text-3); font-weight: 500; margin-bottom: 2px; }
 .room-id {
@@ -210,7 +228,37 @@ input[type="text"]::placeholder {
 .btn-success-solid { background: var(--green-bg); color: var(--green); border-color: #86efac; }
 .btn-success-solid:hover:not(:disabled) { background: #bbf7d0; }
 
-.btn-sm { padding: 7px 14px; font-size: .8rem; width: auto; margin-bottom: 0; }
+/* Размер и ширина — независимые оси */
+.btn-sm { padding: 7px 14px; font-size: .8rem; margin-bottom: 0; }
+.btn-auto { width: auto; }
+
+/* Вертикальный стек кнопок с равным зазором */
+.btn-stack { display: flex; flex-direction: column; gap: 8px; }
+.btn-stack .btn { margin-bottom: 0; }
+
+/* Кнопка-действие в шапке (Покинуть/Закрыть) — компактная, в одну линию с QR/ID */
+.page-header .btn-sm {
+  padding: 6px 12px;
+  font-size: .78rem;
+  height: 32px;
+  align-self: center;
+}
+
+/* Квадратная кнопка-иконка (QR в шапке и пр.) */
+.icon-btn {
+  width: 38px; height: 38px;
+  flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.icon-btn:hover { background: var(--border); border-color: var(--border2); color: var(--text); }
+.icon-btn:active { transform: scale(.96); }
 
 /* ── Divider ── */
 .divider {
@@ -221,25 +269,6 @@ input[type="text"]::placeholder {
 .divider::before, .divider::after {
   content: ""; flex: 1;
   height: 1px; background: var(--border);
-}
-
-/* ── Fingerprint badge ── */
-.fp-badge {
-  display: flex; align-items: center; gap: 8px;
-  padding: 10px 14px;
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  margin-top: 16px;
-}
-.fp-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); flex-shrink: 0; }
-.fp-label { font-size: .72rem; color: var(--text-3); }
-.fp-value {
-  font-size: .75rem;
-  font-family: 'Inter', monospace;
-  color: var(--text-2);
-  font-weight: 600;
-  word-break: break-all;
 }
 
 /* ── Ticket display ── */
@@ -304,6 +333,22 @@ input[type="text"]::placeholder {
   margin: 8px 0;
 }
 
+/* ── Page content column (под шапкой) ── */
+.page-content { width: 100%; max-width: 440px; }
+
+/* ── Queue card (admin) ── */
+.queue-card { margin-bottom: 12px; }
+.queue-card-head {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-bottom: 12px;
+}
+.queue-card-title { display: flex; align-items: center; gap: 10px; }
+.queue-card-name { font-size: 1rem; font-weight: 700; }
+.queue-remove-btn { opacity: .6; }
+.queue-remove-btn:hover { opacity: 1; }
+.queue-card-action { margin: 12px 0 8px; }
+.add-queue-row { margin-bottom: 16px; }
+
 /* ── Queue line ── */
 .queue-line {
   display: flex; gap: 8px; flex-wrap: wrap;
@@ -355,6 +400,56 @@ input[type="text"]::placeholder {
   from { opacity: 0; transform: translateX(8px); }
   to   { opacity: 1; transform: none; }
 }
+
+/* ── Modal (общий: confirm-диалог, QR) ── */
+.modal-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.35);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 10000;
+  animation: fadeIn .15s ease-out;
+  padding: 16px;
+}
+.modal-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  width: 100%;
+  max-width: 360px;
+  box-shadow: var(--shadow-lg);
+  animation: fadeIn .15s ease-out;
+}
+.modal-box-sm { max-width: 360px; }
+.modal-box-md { max-width: 440px; }
+.modal-box-qr {
+  max-width: 320px;
+  display: flex; flex-direction: column; align-items: center; gap: 16px;
+  padding: 24px 24px 20px;
+}
+.modal-title { margin-bottom: 0; }
+.qr-canvas { border-radius: 8px; display: block; max-width: 100%; }
+.modal-box-qr .modal-actions { width: 100%; }
+.qr-code-chip {
+  font-size: .8rem;
+  font-family: 'Inter', monospace;
+  color: var(--text-2);
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 4px 10px;
+  letter-spacing: .05em;
+  font-weight: 600;
+}
+.modal-text {
+  font-size: .95rem; line-height: 1.5;
+  margin-bottom: 20px; color: var(--text);
+}
+.modal-actions {
+  display: flex; gap: 8px;
+}
+/* Кнопки диалога — строго равной ширины, нулевой нижний отступ */
+.modal-actions .btn { flex: 1 1 0; margin-bottom: 0; min-width: 0; }
 
 /* ── Error inline ── */
 .inline-error {

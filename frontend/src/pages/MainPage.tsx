@@ -1,6 +1,8 @@
 import { useState, useEffect, KeyboardEvent } from 'react'
 import { Logo } from '@/components/Logo'
-import { apiFetch, ensureToken, setAccessToken, getOrCreateFingerprint } from '@/lib/auth'
+import { Card } from '@/components/ui/Card'
+import { Button } from '@/components/ui/Button'
+import { apiFetch, ensureToken, setAccessToken } from '@/lib/auth'
 import type { TakeTicketResponse, RoomCreateResponse } from '@/types/api'
 
 interface Props {
@@ -13,8 +15,6 @@ export function MainPage({ onJoinAsUser, onJoinAsAdmin }: Props) {
   const [joinLoading, setJoinLoading] = useState(false)
   const [createLoading, setCreateLoading] = useState(false)
   const [inlineError, setInlineError] = useState('')
-
-  const myFp = getOrCreateFingerprint()
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
@@ -94,8 +94,7 @@ export function MainPage({ onJoinAsUser, onJoinAsAdmin }: Props) {
       <div className="center-wrap">
         <Logo />
 
-        <div className="card">
-          <div className="card-title">Войти в комнату</div>
+        <Card title="Войти в комнату">
           {inlineError && <div className="inline-error">{inlineError}</div>}
           <label className="field-label" htmlFor="input-room-id">ID комнаты</label>
           <input
@@ -108,30 +107,14 @@ export function MainPage({ onJoinAsUser, onJoinAsAdmin }: Props) {
             onChange={e => setRoomInput(e.target.value)}
             onKeyDown={handleKeyDown}
           />
-          <button
-            className="btn btn-primary"
-            disabled={joinLoading}
-            onClick={handleJoin}
-          >
-            {joinLoading ? <><span className="spinner" /> Подключение...</> : 'Войти в очередь'}
-          </button>
+          <Button variant="primary" loading={joinLoading} onClick={handleJoin}>
+            {joinLoading ? 'Подключение...' : 'Войти в очередь'}
+          </Button>
           <div className="divider">или</div>
-          <button
-            className="btn btn-secondary"
-            disabled={createLoading}
-            onClick={handleCreate}
-          >
-            {createLoading ? <><span className="spinner" /> Создание...</> : 'Создать комнату (администратор)'}
-          </button>
-        </div>
-
-        <div className="fp-badge">
-          <div className="fp-dot" />
-          <div>
-            <div className="fp-label">Ваш клиентский ID</div>
-            <div className="fp-value">{myFp}</div>
-          </div>
-        </div>
+          <Button variant="secondary" loading={createLoading} onClick={handleCreate}>
+            {createLoading ? 'Создание...' : 'Создать комнату (администратор)'}
+          </Button>
+        </Card>
       </div>
     </div>
   )

@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { RoomHeader } from '@/components/RoomHeader'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { Button } from '@/components/ui/Button'
+import { Card, StatRow } from '@/components/ui/Card'
 import { apiFetch, getAccessToken, ensureToken } from '@/lib/auth'
 import { useTimer, fmtTime, fmtDuration } from '@/hooks/useTimer'
 import { useConfirm } from '@/hooks/useConfirm'
@@ -162,7 +164,11 @@ export function UserPage({ roomId, onLeave, onServed, onRoomClosed, onToast }: P
   }, [])
 
   async function handleLeave() {
-    if (!await confirm('Покинуть очередь?')) return
+    if (!await confirm({
+      message: 'Покинуть очередь? Вернуться можно будет только заняв новое место.',
+      confirmLabel: 'Покинуть',
+      danger: true,
+    })) return
     leftVoluntarily.current = true
     try {
       await apiFetch('/api/v1/queue/leave', { method: 'POST', body: JSON.stringify({ room_id: roomId }) })
@@ -171,7 +177,11 @@ export function UserPage({ roomId, onLeave, onServed, onRoomClosed, onToast }: P
   }
 
   function handleCopy() {
-    navigator.clipboard.writeText(roomId).then(() => onToast('ID скопирован', 'info'))
+    const link = `${location.origin}/?room=${roomId}`
+    navigator.clipboard.writeText(link).then(
+      () => onToast('Ссылка на комнату скопирована', 'success'),
+      () => onToast('Не удалось скопировать', 'error'),
+    )
   }
 
   const ctx = state?.client_context
@@ -186,12 +196,14 @@ export function UserPage({ roomId, onLeave, onServed, onRoomClosed, onToast }: P
         label="Комната"
         onCopy={handleCopy}
         action={
-          <button className="btn btn-danger btn-sm" onClick={handleLeave}>Покинуть</button>
+          <Button variant="danger" size="sm" fullWidth={false} onClick={handleLeave}>
+            Покинуть
+          </Button>
         }
       />
 
-      <div style={{ width: '100%', maxWidth: 440 }}>
-        <div className="card">
+      <div className="page-content">
+        <Card>
           <div className="ticket-hero">
             <div className="ticket-label">Ваш талон</div>
             <div className={`ticket-num${isPositionServing ? ' serving' : ''}`}>
@@ -199,10 +211,7 @@ export function UserPage({ roomId, onLeave, onServed, onRoomClosed, onToast }: P
             </div>
           </div>
 
-          <div className="stat-row">
-            <span className="stat-label">Позиция в очереди</span>
-            <span className="stat-value blue">{positionText}</span>
-          </div>
+          <StatRow label="Позиция в очереди" accent="blue">{positionText}</StatRow>
 
           <div className="stat-row">
             <span className="stat-label">Статус</span>
@@ -211,20 +220,14 @@ export function UserPage({ roomId, onLeave, onServed, onRoomClosed, onToast }: P
             </span>
           </div>
 
-          <div className="stat-row">
-            <span className="stat-label">Время обслуживания</span>
-            <span className="stat-value green">
-              {isServing ? fmtTime(elapsed) : '—'}
-            </span>
-          </div>
+          <StatRow label="Время обслуживания" accent="green">
+            {isServing ? fmtTime(elapsed) : '—'}
+          </StatRow>
 
-          <div className="stat-row">
-            <span className="stat-label">Среднее время</span>
-            <span className="stat-value">
-              {state?.avg_serve_seconds ? fmtDuration(state.avg_serve_seconds) : '—'}
-            </span>
-          </div>
-        </div>
+          <StatRow label="Среднее время">
+            {state?.avg_serve_seconds ? fmtDuration(state.avg_serve_seconds) : '—'}
+          </StatRow>
+        </Card>
       </div>
     </div>
   )

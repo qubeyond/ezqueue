@@ -105,7 +105,7 @@ export default function App() {
   }
 
   function handleRoomClosed() {
-    addToast('Комната закрыта', 'info')
+    addToast('Администратор закрыл комнату. Приём завершён.', 'info')
     goMain()
   }
 

@@ -1,3 +1,5 @@
+import { IconButton } from '@/components/ui/IconButton'
+
 interface Props {
   roomId: string
   label: string
@@ -28,60 +30,22 @@ function QrIcon() {
 }
 
 export function RoomHeader({ roomId, label, onCopy, action, onQr }: Props) {
-  const HEIGHT = 38
-
   return (
     <div className="page-header">
-      <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+      <div className="page-header-left">
         {onQr && (
-          <button
-            onClick={onQr}
-            title="Показать QR-код"
-            style={{
-              width: HEIGHT,
-              height: HEIGHT,
-              flexShrink: 0,
-              background: 'var(--surface2)',
-              border: '1px solid var(--border)',
-              borderRadius: 'var(--radius-sm)',
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              transition: 'background .15s, border-color .15s',
-              padding: 0,
-              color: 'var(--text-2)',
-            }}
-            onMouseEnter={e => {
-              (e.currentTarget as HTMLButtonElement).style.background = 'var(--border)'
-              ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border2)'
-            }}
-            onMouseLeave={e => {
-              (e.currentTarget as HTMLButtonElement).style.background = 'var(--surface2)'
-              ;(e.currentTarget as HTMLButtonElement).style.borderColor = 'var(--border)'
-            }}
-          >
+          <IconButton onClick={onQr} title="Показать QR-код" aria-label="Показать QR-код">
             <QrIcon />
-          </button>
+          </IconButton>
         )}
-        <div
-          style={{
-            height: HEIGHT,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center',
-            gap: 2,
-          }}
-        >
+        <div className="room-meta">
           <div className="room-label">{label}</div>
-          <div className="room-id" onClick={onCopy} title="Скопировать ID">
+          <div className="room-id" onClick={onCopy} title="Скопировать ссылку на комнату">
             {roomId}
           </div>
         </div>
       </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-        {action}
-      </div>
+      <div className="page-header-actions">{action}</div>
     </div>
   )
 }

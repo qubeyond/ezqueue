@@ -1,11 +1,23 @@
 import { useState, useCallback } from 'react'
 
-export function useConfirm() {
-  const [state, setState] = useState<{ message: string; resolve: (v: boolean) => void } | null>(null)
+export interface ConfirmOptions {
+  message: string
+  confirmLabel?: string
+  cancelLabel?: string
+  danger?: boolean
+}
 
-  const confirm = useCallback((message: string): Promise<boolean> => {
+interface ConfirmState extends ConfirmOptions {
+  resolve: (v: boolean) => void
+}
+
+export function useConfirm() {
+  const [state, setState] = useState<ConfirmState | null>(null)
+
+  const confirm = useCallback((opts: string | ConfirmOptions): Promise<boolean> => {
+    const options: ConfirmOptions = typeof opts === 'string' ? { message: opts } : opts
     return new Promise(resolve => {
-      setState({ message, resolve })
+      setState({ ...options, resolve })
     })
   }, [])
 
@@ -19,5 +31,17 @@ export function useConfirm() {
     setState(null)
   }
 
-  return { confirm, dialogProps: state ? { message: state.message, onConfirm, onCancel } : null }
+  return {
+    confirm,
+    dialogProps: state
+      ? {
+          message: state.message,
+          confirmLabel: state.confirmLabel,
+          cancelLabel: state.cancelLabel,
+          danger: state.danger,
+          onConfirm,
+          onCancel,
+        }
+      : null,
+  }
 }
