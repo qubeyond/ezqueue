@@ -1,0 +1,10 @@
+# секреты и локальное — НЕ должны попадать в образ
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+node_modules
+dist
+*.local
+*.tsbuildinfo

@@ -53,6 +53,11 @@ def room_invite_key(room_id: str, token: str) -> str:
     return f"room:{room_id}:invite:{token}"
 
 
+def revoked_token_key(jti: str) -> str:
+    # денилист отозванных access-токенов (logout)
+    return f"revoked:{jti}"
+
+
 def user_queue_key(room_id: str) -> str:
     return f"room:{room_id}:user_queue"
 

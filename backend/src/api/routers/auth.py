@@ -1,12 +1,17 @@
+from datetime import UTC, datetime
 from typing import Annotated
 
 from dishka import FromDishka
 from dishka.integrations.fastapi import inject
-from fastapi import APIRouter, Cookie, HTTPException, Query, Request, Response
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from src.api.limiter import limiter
 from src.api.schemas.auth import TokenResponse
-from src.services.auth import REFRESH_COOKIE, AuthService
+from src.domain.repositories import QueueRepository
+from src.services.auth import REFRESH_COOKIE, AuthService, generate_identity
+
+_bearer = HTTPBearer(auto_error=False)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -18,10 +23,22 @@ async def get_token(
     request: Request,
     response: Response,
     auth_service: FromDishka[AuthService],
-    fingerprint: Annotated[str, Query(min_length=8, max_length=128, pattern=r"^[\x21-\x7E]+$")],
+    refresh_token: Annotated[str | None, Cookie(alias=REFRESH_COOKIE)] = None,
 ):
-    access_token = auth_service.create_token(fingerprint=fingerprint, role="user")
+    # Личность выпускает СЕРВЕР. Если у клиента уже есть валидная refresh-кука —
+    # переиспользуем её sub (та же личность), иначе генерируем новую.
+    fingerprint: str | None = None
+    if refresh_token:
+        try:
+            payload = auth_service.decode_token(refresh_token)
+            if payload.get("type") == "refresh":
+                fingerprint = payload.get("sub")
+        except HTTPException:
+            fingerprint = None
+    if not fingerprint:
+        fingerprint = generate_identity()
 
+    access_token = auth_service.create_token(fingerprint=fingerprint, role="user")
     auth_service.set_refresh_cookie(response, fingerprint)
 
     return TokenResponse(access_token=access_token)
@@ -57,7 +74,24 @@ async def refresh_token(
 async def logout(
     request: Request,
     response: Response,
+    auth_service: FromDishka[AuthService],
+    queue_repo: FromDishka[QueueRepository],
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(_bearer)] = None,
 ):
     response.delete_cookie(key=REFRESH_COOKIE, path="/api/v1/auth")
+
+    # Отзываем access-токен по jti до его естественного истечения,
+    # чтобы он не работал после выхода (JWT сам по себе не отзывается).
+    if credentials:
+        try:
+            payload = auth_service.decode_token(credentials.credentials)
+            jti = payload.get("jti")
+            exp = payload.get("exp")
+            if jti and exp:
+                ttl = int(exp - datetime.now(UTC).timestamp())
+                if ttl > 0:
+                    await queue_repo.revoke_token(jti, ttl)
+        except HTTPException:
+            pass  # битый/истёкший токен отзывать не нужно
 
     return {"status": "ok"}

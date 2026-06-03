@@ -9,11 +9,20 @@ from fastapi import WebSocket
 logger = logging.getLogger(__name__)
 
 
+# Максимум одновременных WS-подключений на одного пользователя (анти-DoS).
+MAX_CONNECTIONS_PER_USER = 5
+
+
 class RoomConnectionManager:
     def __init__(self, redis: aioredis.Redis) -> None:
         self._r = redis
         # websocket -> (user_id, pubsub listener task)
         self._connections: dict[str, dict[WebSocket, tuple[str, asyncio.Task]]] = {}
+
+    def user_connection_count(self, user_id: str) -> int:
+        return sum(
+            1 for room in self._connections.values() for uid, _ in room.values() if uid == user_id
+        )
 
     async def connect(self, room_id: str, websocket: WebSocket, user_id: str) -> None:
         await websocket.accept()

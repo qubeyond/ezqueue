@@ -71,6 +71,8 @@ def make_queue_repo_mock() -> AsyncMock:
     mock.remove_admin.return_value = None
     mock.create_invite.return_value = None
     mock.consume_invite.return_value = True
+    mock.revoke_token.return_value = None
+    mock.is_token_revoked.return_value = False
 
     # lock(room_id) — синхронный метод, возвращающий async-контекст-менеджер.
     # Подменяем no-op контекстом, чтобы `async with repo.lock(...)` работал в юнит-тестах.

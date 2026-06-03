@@ -1,0 +1,13 @@
+# секреты и локальное — НЕ должны попадать в образ
+.env
+.env.*
+!.env.example
+.git
+.gitignore
+.venv
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+tests/
+.mypy_cache/

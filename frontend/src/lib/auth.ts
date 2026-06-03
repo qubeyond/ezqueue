@@ -2,18 +2,8 @@ import type { TokenResponse } from '@/types/api'
 
 let accessToken = ''
 
-export const MY_ID_KEY = 'q_client_fp'
 export const ROOM_KEY = 'q_room_id'
 export const ROLE_KEY = 'q_role'
-
-export function getOrCreateFingerprint(): string {
-  let fp = localStorage.getItem(MY_ID_KEY)
-  if (!fp) {
-    fp = 'cli_' + Math.random().toString(36).substring(2, 11).toUpperCase()
-    localStorage.setItem(MY_ID_KEY, fp)
-  }
-  return fp
-}
 
 export function getAccessToken(): string {
   return accessToken
@@ -47,8 +37,8 @@ export async function ensureToken(): Promise<void> {
     return
   }
 
-  const fp = getOrCreateFingerprint()
-  const res = await fetch(`/api/v1/auth/token?fingerprint=${encodeURIComponent(fp)}`, {
+  // Личность выдаёт сервер (в httpOnly refresh-куке). Клиент ничего не задаёт.
+  const res = await fetch('/api/v1/auth/token', {
     method: 'POST',
     credentials: 'include',
   })

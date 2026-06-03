@@ -20,12 +20,18 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM python:3.14-slim AS runtime
 
+# Непривилегированный пользователь: если приложение скомпрометируют,
+# атакующий не получит root внутри контейнера.
+RUN useradd --create-home --uid 10001 appuser
+
 WORKDIR /app
 
 COPY --from=builder /app/.venv /app/.venv
 COPY --from=builder /app/src /app/src
 
 ENV PATH="/app/.venv/bin:$PATH"
+
+USER appuser
 
 EXPOSE 8000
 

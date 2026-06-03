@@ -5,6 +5,7 @@ from dishka.integrations.fastapi import inject
 from fastapi import Depends, HTTPException
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
+from src.domain.repositories import QueueRepository
 from src.services.auth import AuthService
 
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -14,8 +15,16 @@ bearer_scheme = HTTPBearer(auto_error=False)
 async def get_current_user(
     credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(bearer_scheme)],
     auth_service: FromDishka[AuthService],
+    queue_repo: FromDishka[QueueRepository],
 ) -> dict:
-    return auth_service.verify_user(credentials)
+    user = auth_service.verify_user(credentials)
+
+    # Отзыв токена при logout: если jti в денилисте — токен больше не валиден.
+    jti = user.get("jti")
+    if jti and await queue_repo.is_token_revoked(jti):
+        raise HTTPException(status_code=401, detail="Токен отозван")
+
+    return user
 
 
 async def require_admin(

@@ -361,6 +361,25 @@ async def test_resume_rejects_non_admin(queue_repo, room_service):
     assert exc.value.status_code == 403
 
 
+async def test_can_access_admin_and_ticket_holder_only(queue_repo, room_service, visitor_service):
+    await _open_room(queue_repo)
+    # Владелец — да.
+    assert await room_service.can_access(ROOM, OWNER) is True
+    # Посторонний без талона — нет.
+    assert await room_service.can_access(ROOM, "stranger") is False
+    # Взял талон — теперь да.
+    await visitor_service.take_ticket(ROOM, "A", "guest")
+    assert await room_service.can_access(ROOM, "guest") is True
+    # Несуществующая комната — нет.
+    assert await room_service.can_access("NOPE", "guest") is False
+
+
+async def test_token_revocation_round_trip(queue_repo):
+    assert await queue_repo.is_token_revoked("abc") is False
+    await queue_repo.revoke_token("abc", 60)
+    assert await queue_repo.is_token_revoked("abc") is True
+
+
 async def test_vip_no_code_routes_to_a_queue(queue_repo, room_service, visitor_service):
     """VIP (balancer off): вход по общей ссылке без кода → попадает в одну из очередей."""
     await _open_room(queue_repo, balancer=False, code="AAAA")

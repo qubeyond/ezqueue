@@ -1,3 +1,4 @@
+import secrets
 from datetime import UTC, datetime, timedelta
 
 import jwt
@@ -7,6 +8,13 @@ from fastapi.security import HTTPAuthorizationCredentials
 from src.config import Settings
 
 REFRESH_COOKIE = "refresh_token"
+
+
+def generate_identity() -> str:
+    # Серверный неугадываемый идентификатор посетителя. Раньше его задавал
+    # клиент (?fingerprint=...), что позволяло выдать себя за другого —
+    # теперь личность выпускает только сервер.
+    return "u_" + secrets.token_urlsafe(16)
 
 
 class AuthService:
@@ -19,6 +27,8 @@ class AuthService:
             "role": role,
             "room_id": room_id,
             "type": "access",
+            # jti — уникальный id токена, нужен для отзыва при logout.
+            "jti": secrets.token_urlsafe(8),
             "exp": datetime.now(UTC) + timedelta(minutes=self._settings.jwt_expire_minutes),
         }
 

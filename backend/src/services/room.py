@@ -383,6 +383,16 @@ class RoomService:
             "timeline": history,
         }
 
+    async def can_access(self, room_id: str, user_id: str) -> bool:
+        """Может ли пользователь подключаться к комнате по WS: он админ
+        либо стоит в одной из очередей (есть талон). Иначе — посторонний."""
+        if not await self._qr.room_exists(room_id):
+            return False
+        if await self._qr.is_admin(room_id, user_id):
+            return True
+        queues = await self._qr.load_all(room_id)
+        return any(q.has_user(user_id) for q in queues)
+
     async def get_state(self, room_id: str, user_id: str) -> dict:
         if not await self._qr.room_exists(room_id):
             return {"room_closed": True, "room_id": room_id}

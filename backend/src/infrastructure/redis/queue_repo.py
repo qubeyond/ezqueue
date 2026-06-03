@@ -21,6 +21,7 @@ from src.infrastructure.redis.client import (
     queue_hash_key,
     queue_list_key,
     queue_status_key,
+    revoked_token_key,
     room_admins_key,
     room_avg_serve_key,
     room_codes_key,
@@ -301,6 +302,15 @@ class RedisQueueRepository:
         # Одноразовость: атомарно удаляем ключ, успех = приглашение было валидным.
         deleted = await self._r.delete(room_invite_key(room_id, token))
         return bool(deleted)
+
+    # ── Денилист отозванных токенов (logout) ──
+
+    async def revoke_token(self, jti: str, ttl_seconds: int) -> None:
+        # Храним ровно до истечения самого токена — потом он и так невалиден.
+        await self._r.set(revoked_token_key(jti), "1", ex=max(ttl_seconds, 1))
+
+    async def is_token_revoked(self, jti: str) -> bool:
+        return bool(await self._r.exists(revoked_token_key(jti)))
 
     async def get_avg_serve(self, room_id: str) -> int | None:
         val = await self._r.get(room_avg_serve_key(room_id))

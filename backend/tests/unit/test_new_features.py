@@ -443,6 +443,28 @@ async def test_resume_rejects_non_admin(client, user_headers, mock_queue_repo):
     assert resp.status_code == 403
 
 
+# ---------------------------------------------------------------------------
+# Безопасность: отзыв токена (logout) и денилист
+# ---------------------------------------------------------------------------
+
+
+async def test_logout_revokes_access_token(client, user_headers, mock_queue_repo):
+    resp = await client.post("/api/v1/auth/logout", headers=user_headers)
+    assert resp.status_code == 200
+    # access-токен из заголовка должен быть отозван по jti.
+    mock_queue_repo.revoke_token.assert_awaited_once()
+
+
+async def test_revoked_token_rejected_on_protected_endpoint(client, user_headers, mock_queue_repo):
+    # Денилист сообщает, что токен отозван → 401 на защищённом эндпоинте.
+    mock_queue_repo.is_token_revoked.return_value = True
+    mock_queue_repo.room_exists.return_value = True
+    resp = await client.post(
+        "/api/v1/queue/ticket", json={"room_id": "ROOM01"}, headers=user_headers
+    )
+    assert resp.status_code == 401
+
+
 async def test_co_admin_can_call_next(client, user_headers, mock_queue_repo):
     # Пользователь принял приглашение → он в admins set → is_admin True.
     # Но admin-эндпоинты требуют admin-роль в токене; проверяем через сервисный
